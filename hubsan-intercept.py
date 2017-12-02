@@ -78,6 +78,10 @@ def measure_delay(
 
     retune = 0
     while True:
+        ss = sdr.readStreamStatus(txStream, timeoutUs=int(200))
+        if ss.ret != SOAPY_SDR_TIMEOUT:
+            print "Status: %s" % str(ss)
+
         if sdr.getHardwareTime() > (txTime + long(1e6)):
             txTime += long(10e6)
             sr = sdr.writeStream(txStream, [txPulse], len(txPulse), txFlags, txTime, timeoutUs=1000000)
