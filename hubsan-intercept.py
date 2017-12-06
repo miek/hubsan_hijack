@@ -10,8 +10,22 @@ from optparse import OptionParser
 import time
 import os
 
-def generate_cf32_pulse(numSamps, scaleFactor=0.8):
-    return np.array([scaleFactor]*numSamps, np.complex64)
+# The following three one-liners come from 
+#   https://oshearesearch.com/index.php/2015/05/31/building-a-burst-fsk-modem-in-gnu-radio-with-message-lambda-blocks-and-eventstream/
+def bits2symbols(bits):
+    return np.array(bits, dtype=np.float32)*2 - 1
+
+def interp(symbols, sps):
+    return np.tile(symbols, [sps, 1]).T.reshape([1, len(symbols)*sps])[0]
+
+def fskmod(x, deviation, samp_rate):
+    return np.array(np.exp(1j*2*np.pi*((deviation*x*np.arange(len(x)))/samp_rate)), dtype="complex64")
+
+def generate_packet():
+    bits = [1,0,1,0,1,0,1,1,0,1,1,1,0,0,1]*10
+    syms = bits2symbols(bits)
+    isyms = interp(syms, 16)
+    return fskmod(isyms, 250e3, 1e6)
 
 def measure_delay(
     args,
@@ -26,7 +40,6 @@ def measure_delay(
     rxGain=None,
     txGain=None,
     clockRate=None,
-    numTxSamps=1900,
     numRxSamps=10000,
     dumpDir=None,
 ):
@@ -73,7 +86,6 @@ def measure_delay(
     # transmit pulses
     sdr.activateStream(txStream)
     txTime = sdr.getHardwareTime() + long(0.1e9)
-    txPulse = generate_cf32_pulse(numTxSamps)
     txFlags = SOAPY_SDR_HAS_TIME | SOAPY_SDR_END_BURST
 
     retune = 0
@@ -82,9 +94,10 @@ def measure_delay(
         if ss.ret != SOAPY_SDR_TIMEOUT:
             print "Status: %s" % str(ss)
 
-        if sdr.getHardwareTime() > (txTime + long(1e6)):
+        if sdr.getHardwareTime() > (txTime + long(2e6)):
             txTime += long(10e6)
-            sr = sdr.writeStream(txStream, [txPulse], len(txPulse), txFlags, txTime, timeoutUs=1000000)
+            txPulse = generate_packet()
+            sr = sdr.writeStream(txStream, [txPulse], len(txPulse), txFlags, txTime, timeoutUs=1000)
             if sr.ret != len(txPulse): raise Exception('transmit failed %s'%str(sr))
 #            time.sleep(0.001)
 #            if retune > 3:
