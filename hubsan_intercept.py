@@ -9,6 +9,7 @@ from scipy import signal
 from optparse import OptionParser
 import time
 import os
+import hubsan
 
 # The following three one-liners come from 
 #   https://oshearesearch.com/index.php/2015/05/31/building-a-burst-fsk-modem-in-gnu-radio-with-message-lambda-blocks-and-eventstream/
@@ -21,11 +22,12 @@ def interp(symbols, sps):
 def fskmod(x, deviation, samp_rate):
     return np.array(np.exp(1j*2*np.pi*((deviation*x*np.arange(len(x)))/samp_rate)), dtype="complex64")
 
-def generate_packet():
-    bits = [1,0,1,0,1,0,1,1,0,1,1,1,0,0,1]*10
+def generate_packet(sync, txid, deviation, data_rate, samp_rate):
+    bits = hubsan.build_packet(sync, 20, 128, 128, 128, txid)
     syms = bits2symbols(bits)
-    isyms = interp(syms, 16)
-    return fskmod(isyms, 250e3, 1e6)
+    # TODO: warn/error on non-integer samp_rate/data_rate
+    isyms = interp(syms, int(samp_rate / data_rate))
+    return fskmod(isyms, deviation, samp_rate)
 
 def measure_delay(
     args,
@@ -42,6 +44,8 @@ def measure_delay(
     clockRate=None,
     numRxSamps=10000,
     dumpDir=None,
+    syncWord=None,
+    txID=None,
 ):
     sdr = SoapySDR.Device(args)
     if not sdr.hasHardwareTime():
@@ -96,7 +100,7 @@ def measure_delay(
 
         if sdr.getHardwareTime() > (txTime + long(2e6)):
             txTime += long(10e6)
-            txPulse = generate_packet()
+            txPulse = generate_packet(sync=syncWord, txid=txID, deviation=186e3, data_rate=100e3, samp_rate=rate)
             sr = sdr.writeStream(txStream, [txPulse], len(txPulse), txFlags, txTime, timeoutUs=1000)
             if sr.ret != len(txPulse): raise Exception('transmit failed %s'%str(sr))
 #            time.sleep(0.001)
@@ -131,6 +135,8 @@ def main():
     parser.add_option("--freq", type="float", dest="freq", help="Optional Tx and Rx freq (Hz)", default=None)
     parser.add_option("--clockRate", type="float", dest="clockRate", help="Optional clock rate (Hz)", default=None)
     parser.add_option("--dumpDir", type="string", dest="dumpDir", help="Optional directory to dump debug samples", default=None)
+    parser.add_option("--syncWord", type="int", dest="syncWord", help="Optional sync word", default=None)
+    parser.add_option("--txID", type="int", dest="txID", help="Optional TX ID", default=None)
     (options, args) = parser.parse_args()
     measure_delay(
         args=options.args,
@@ -146,6 +152,8 @@ def main():
         txChan=options.txChan,
         clockRate=options.clockRate,
         dumpDir=options.dumpDir,
+        syncWord=options.syncWord,
+        txID=options.txID,
     )
 
 if __name__ == '__main__': main()
