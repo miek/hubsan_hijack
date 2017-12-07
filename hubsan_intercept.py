@@ -9,6 +9,8 @@ from scipy import signal
 from optparse import OptionParser
 import time
 import os
+
+import gamepad
 import hubsan
 
 # The following three one-liners come from 
@@ -22,8 +24,12 @@ def interp(symbols, sps):
 def fskmod(x, deviation, samp_rate):
     return np.array(np.exp(1j*2*np.pi*((deviation*x*np.arange(len(x)))/samp_rate)), dtype="complex64")
 
-def generate_packet(sync, txid, deviation, data_rate, samp_rate):
-    bits = hubsan.build_packet(sync, 20, 128, 128, 128, txid)
+def generate_packet(gamepad_state, sync, txid, deviation, data_rate, samp_rate):
+    throttle = gamepad_state["ABS_Z"]
+    rudder = (gamepad_state["ABS_X"] / 512) + 128
+    elevator = (gamepad_state["ABS_RY"] / 512) + 128
+    aileron = (gamepad_state["ABS_RX"] / -512) + 128
+    bits = hubsan.build_packet(sync, throttle, rudder, elevator, aileron, txid)
     syms = bits2symbols(bits)
     # TODO: warn/error on non-integer samp_rate/data_rate
     isyms = interp(syms, int(samp_rate / data_rate))
@@ -47,6 +53,8 @@ def measure_delay(
     syncWord=None,
     txID=None,
 ):
+    gp = gamepad.Gamepad()
+
     sdr = SoapySDR.Device(args)
     if not sdr.hasHardwareTime():
         raise Exception('this device does not support timed streaming')
@@ -100,7 +108,7 @@ def measure_delay(
 
         if sdr.getHardwareTime() > (txTime + long(2e6)):
             txTime += long(10e6)
-            txPulse = generate_packet(sync=syncWord, txid=txID, deviation=186e3, data_rate=100e3, samp_rate=rate)
+            txPulse = generate_packet(gamepad_state=gp.get_state(), sync=syncWord, txid=txID, deviation=186e3, data_rate=100e3, samp_rate=rate)
             sr = sdr.writeStream(txStream, [txPulse], len(txPulse), txFlags, txTime, timeoutUs=1000)
             if sr.ret != len(txPulse): raise Exception('transmit failed %s'%str(sr))
 #            time.sleep(0.001)
