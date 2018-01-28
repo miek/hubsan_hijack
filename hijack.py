@@ -102,24 +102,19 @@ def measure_delay(
 
     retune = 0
     while True:
-        ss = sdr.readStreamStatus(txStream, timeoutUs=int(200))
-        if ss.ret != SOAPY_SDR_TIMEOUT:
-            print "Status: %s" % str(ss)
+        try:
+            ss = sdr.readStreamStatus(txStream, timeoutUs=int(200))
+            if ss.ret != SOAPY_SDR_TIMEOUT:
+                print "Status: %s" % str(ss)
 
-        if sdr.getHardwareTime() > (txTime + long(2e6)):
-            txTime += long(10e6)
-            txPulse = generate_packet(gamepad_state=gp.get_state(), sync=syncWord, txid=txID, deviation=186e3, data_rate=100e3, samp_rate=rate)
-            sr = sdr.writeStream(txStream, [txPulse], len(txPulse), txFlags, txTime, timeoutUs=1000)
-            if sr.ret != len(txPulse): raise Exception('transmit failed %s'%str(sr))
-#            time.sleep(0.001)
-#            if retune > 3:
-#                sdr.setFrequency(SOAPY_SDR_TX, txChan, 1e9 + 1e6)
-#                retune = 0
-#            elif retune == 0:
-#                sdr.setFrequency(SOAPY_SDR_TX, txChan, 1e9);
-#                retune += 1
-#            else:
-#                retune += 1
+            if sdr.getHardwareTime() > (txTime + long(2e6)):
+                txTime += long(10e6)
+                txPulse = generate_packet(gamepad_state=gp.get_state(), sync=syncWord, txid=txID, deviation=186e3, data_rate=100e3, samp_rate=rate)
+                sr = sdr.writeStream(txStream, [txPulse], len(txPulse), txFlags, txTime, timeoutUs=1000)
+                if sr.ret != len(txPulse):
+                    raise Exception('transmit failed %s'%str(sr))
+        except KeyboardInterrupt:
+            break
 
     #cleanup streams
     print("Cleanup streams")
